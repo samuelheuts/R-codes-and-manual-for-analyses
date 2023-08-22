@@ -1,5 +1,217 @@
-This is the code to reproduce the analysis of the study: Type A aortic dissection: optimal annual case volume.By:Michal J. Kawczynski, MD, Sander M.J. van Kuijk, PhD, Jules R. Olsthoorn, MD,Jos G. Maessen, MD, PhD, Suzanne Kats, MD, PhD, Elham Bidar, MD, PhD, and Samuel Heuts, MD, PhDRestricted Cubic Spline for Volume/Outcome relationship & Elbow methodAnnual Case Volume & Early Mortality (in %)Data preparationStep 1: calculation of study proportionyi = ((Number of early deaths / Total study population) * 100)yi=events/(study population)?100Step 2: calculation of proportion variancevi = (((Study proportion in fractions * (1- Study proportion in fractions))/ Total study population)) * 100)vi=(proportion?(1-proportion))?100Step 3: defining annual case volumexi = (Total study population / Number of months reported for study inclusion) * 12xi=(study population)/(inclusion duration in months)  * 12Step 4: creating database for analysis database title = mortalityyi = study proportion (in %)vi = study proportion variance (in %)xi = annual case volume (case/year)Analysis in R Studiolibrary(rms)library(metafor)res.rcs <- rma(yi, vi, mods = ~ rcs(xi, 3), control=list(stepadj=0.5, maxiter=1000), data=mortality)knots <- attr(rcs(model.matrix(res.rcs)[,2], 3), "parms")xs <- seq(0, 152.11, length=152.11)sav <- predict(res.rcs, newmods=rcspline.eval(xs, knots, inclx=TRUE))tmp <- regplot(res.rcs, mod=2, pred=sav, xvals=xs, las=1, pch = 21, lcol = "#B24745FF", col = "#374E55FF", digits=1, bty="l", psize=4/sqrt(mortality$vi), ylim=c(0,30), xlab="Annual case volume", ylab = "Early mortality (in %)", main="Volume-Outcome Relationship for Early Mortality", shade = "#D5D5D5")
-Slope analysis using elbow methodData preparationStep 1: save predicted values from the restricted cubic spline function:write.csv(sav, file = "sav.csv")Step 2: transform the file into 2 columns:x = annual case volumey = corresponding predicted values derived from restricted cubic spline modelAnalysis in R Studiolibrary(pathviewr)find_curve_elbow(elbow, plot_curve = TRUE)
-Annual Case Volume & Early Stroke (in %)Data preparationStep 1: calculation of study proportionyi = ((Number of early strokes / Total study population) * 100)yi=events/(study population)?100Step 2: calculation of proportion variancevi = (((Study proportion in fractions * (1- Study proportion in fractions))/ Total study population)) * 100)vi=(proportion?(1-proportion))?100Step 3: defining annual case volumexi = (Total study population / Number of months reported for study inclusion) * 12xi=(study population)/(inclusion duration in months)  * 12Step 4: creating database for analysis database title = strokeyi = study proportion (in %)vi = proportion variance (in %)xi = annual case volume (case/year)Analysis in Rlibrary(rms)library(metafor)res.rcs <- rma(yi, vi, mods = ~ rcs(xi, 3), control=list(stepadj=0.5, maxiter=1000), data=stroke)knots <- attr(rcs(model.matrix(res.rcs)[,2], 3), "parms")xs <- seq(0, 169.67, length=169.67)sav <- predict(res.rcs, newmods=rcspline.eval(xs, knots, inclx=TRUE))tmp <- regplot(res.rcs, mod=2, pred=sav, xvals=xs, las=1, pch = 21, lcol = "#B24745FF", col = "#374E55FF", digits=1, bty="l", psize=3/sqrt(stroke$vi), ylim=c(0,40), xlab="Annual case volume", ylab = "Early stroke (in %)", main="Volume-Outcome Relationship for Early Stroke", shade = "#D5D5D5")
-Survival analysis for Long-term Mortality based on Annual Case Volume QuartilesData preparationdata input = different datafiles containing the following variables:	time1 = retrieved time to event data in days	status = variable containing information on occurrence of event or censored statusclass_quart = classification in one of the 4 quartiles defined based on annual case volumeAnalysis in Rlibrary(survival)library(survminer)library(tidyverse)library(rstpm2)library(discfrail)All long-term survival Ð not adjustedfit <- survfit(Surv(time1, status) ~ quartile, data = TypeA_tte_KM)ggsurvplot(fit, data = TypeA_tte_KM, risk.table = TRUE, pval = TRUE, xlim = c(0,10), break.time.by = 365, censor = FALSE, conf.int = TRUE, palette = "jama", legend.title = "Quartiles", legend.labs = c("1", "2", "3", "4"), title = "Individualized Patient Data Kaplan Meier Meta-analysis", break.x.by = 1, xlab = "Time in years", fontsize = 4, risk.table.height = 0.35, font.main = c(15, "bold"), font.legend = c(12, "bold"))Non-parametric hierarchical Cox frailty models Ð without inclusion of Annual Case VolumeNon-parametric hierarchical Cox frailty model for identification of number of latent clusters (based on Bayesian Information Criterion)testweib <- npdf_cox(Surv(time, status) ~ age + men + continent + medinc, groups = author, data = typette, K = 6, estK = TRUE, criterion = "BIC", eps_conv = 10^-4, se_method = c("louis","exact","numeric"))plot(testweib, type = 'km', lwd = 1.5)testweibNon-parametric hierarchical Cox frailty model based on 2 latent populations (selected based on Bayesian Information Criterion)testweib <- npdf_cox(Surv(time, status) ~ age + men + continent + medinc, groups = author, data = typette, K = 2, estK = FALSE, criterion = "BIC", eps_conv = 10^-4, se_method = c("louis","exact","numeric"))plot(testweib, type = 'km', lwd = 1.5)testweibtestweib$belongingNon-parametric hierarchical Cox frailty models Ð with inclusion of Annual Case Volumetestweibvol <- npdf_cox(Surv(time, status) ~ age + men + continent + medinc + quart, groups = author, data = typette, K = 2, estK = FALSE, criterion = "BIC", eps_conv = 10^-4, se_method = c("louis","exact","numeric"))plot(testweibvol, type = 'km', lwd = 1.5)testweibvoltestweibvol$belongingCox proportional hazard assumption for quartiles corrected for frailtyfit <- coxph(Surv(time1, status) ~ quart + frailty(author, df=1), typette)fit2 <- cox.zph(fit)
-Publication bias for Early Mortality (in %) (primary outcome)Data preparation data input = ÒmortalityÓ, containing the following variables:	mortal = number of events (early mortality in absolute values per study)	total = number of study subjects (in absolute values per study)	age = age in yearsAnalysis in Rlibrary(meta)Publication bias for overall Early Mortality (in %)publication_bias <- metaprop(event=mortal, n=total, studlab=Study, data=mortality_PB, method = "Inverse", method.bias = "Egger")funnel(publication_bias)metabias(publication_bias, method.bias = publication_bias$method.bias)trimfill(publication_bias)funnel(trimfill(publication_bias))Publication bias for overall Early Mortality (in %) Ð Quartile 1publication_bias1 <- metaprop(event=mortal, n=total, studlab=Study, data=mortality_PB1, method = "Inverse", method.bias = "Egger")funnel(publication_bias1)metabias(publication_bias1, method.bias = publication_bias1$method.bias)trimfill1 <- trimfill(publication_bias1)funnel(trimfill(publication_bias1))Publication bias for overall Early Mortality (in %) Ð Quartile 2publication_bias2 <- metaprop(event=mortal, n=total, studlab=Study, data=mortality_PB2, method = "Inverse", method.bias = "Egger")funnel(publication_bias2)metabias(publication_bias2, method.bias = publication_bias2$method.bias)trimfill2 <- trimfill(publication_bias2)funnel(trimfill(publication_bias2))Publication bias for overall Early Mortality (in %) Ð Quartile 3publication_bias3 <- metaprop(event=mortal, n=total, studlab=Study, data=mortality_PB3, method = "Inverse", method.bias = "Egger")funnel(publication_bias3)metabias(publication_bias3, method.bias = publication_bias3$method.bias)trimfill3 <- trimfill(publication_bias3)funnel(trimfill(publication_bias3))Publication bias for overall Early Mortality (in %) Ð Quartile 4publication_bias4 <- metaprop(event=mortal, n=total, studlab=Study, data=mortality_PB4, method = "Inverse", method.bias = "Egger")funnel(publication_bias4)metabias(publication_bias4, method.bias = publication_bias4$method.bias)trimfill4 <- trimfill(publication_bias4)funnel(trimfill(publication_bias4))Restricted Cubic Spline for Volume/Outcome relationship with adjustement for publication bias based on separate Trim-and-Fill analysesres.rcs <- rma(yi, vi, mods = ~ rcs(xi, 3), control=list(stepadj=0.5, maxiter=1000), data=mortalityPB_fill)knots <- attr(rcs(model.matrix(res.rcs)[,2], 3), "parms")xs <- seq(0, 152.11, length=152.11)sav <- predict(res.rcs, newmods=rcspline.eval(xs, knots, inclx=TRUE))tmp <- regplot(res.rcs, mod=2, pred=sav, xvals=xs, las=1, pch = 21, lcol = "#B24745FF", col = "#374E55FF", digits=1, bty="l", psize=4/sqrt(mortalityPB_fill$vi), ylim=c(0,40), xlab="Annual case volume", ylab = "Early mortality (in %)", main="Publication Bias Adjusted Volume-Outcome Relationship for Early Mortality", shade = "#D5D5D5")1
+This is the code to reproduce the analysis of the study: 
+
+Type A aortic dissection: optimal annual case volume.
+
+By:
+
+Michal J. Kawczynski, MD, Sander M.J. van Kuijk, PhD, Jules R. Olsthoorn, MD,
+Jos G. Maessen, MD, PhD, Suzanne Kats, MD, PhD, Elham Bidar, MD, PhD, 
+and Samuel Heuts, MD, PhD
+
+
+Restricted Cubic Spline for Volume/Outcome relationship & Elbow method
+
+Annual Case Volume & Early Mortality (in %)
+
+Data preparation
+Step 1: calculation of study proportion
+yi = ((Number of early deaths / Total study population) * 100)
+
+yi=events/(study population)?100
+
+Step 2: calculation of proportion variance
+vi = (((Study proportion in fractions * (1- Study proportion in fractions))/ Total study population)) * 100)
+vi=(proportion?(1-proportion))?100
+
+Step 3: defining annual case volume
+xi = (Total study population / Number of months reported for study inclusion) * 12
+
+xi=(study population)/(inclusion duration in months)  * 12
+
+Step 4: creating database for analysis 
+database title = mortality
+yi = study proportion (in %)
+vi = study proportion variance (in %)
+xi = annual case volume (case/year)
+
+Analysis in R Studio
+
+library(rms)
+library(metafor)
+
+res.rcs <- rma(yi, vi, mods = ~ rcs(xi, 3), control=list(stepadj=0.5, maxiter=1000), data=mortality)
+knots <- attr(rcs(model.matrix(res.rcs)[,2], 3), "parms")
+xs <- seq(0, 152.11, length=152.11)
+sav <- predict(res.rcs, newmods=rcspline.eval(xs, knots, inclx=TRUE))
+tmp <- regplot(res.rcs, mod=2, pred=sav, xvals=xs, las=1, pch = 21, lcol = "#B24745FF", col = "#374E55FF", digits=1, bty="l", psize=4/sqrt(mortality$vi), ylim=c(0,30), xlab="Annual case volume", ylab = "Early mortality (in %)", main="Volume-Outcome Relationship for Early Mortality", shade = "#D5D5D5")
+
+
+
+
+
+Slope analysis using elbow method
+
+Data preparation
+Step 1: save predicted values from the restricted cubic spline function:
+
+write.csv(sav, file = "sav.csv")
+
+Step 2: transform the file into 2 columns:
+x = annual case volume
+y = corresponding predicted values derived from restricted cubic spline model
+
+Analysis in R Studio
+
+library(pathviewr)
+find_curve_elbow(elbow, plot_curve = TRUE)
+
+
+Annual Case Volume & Early Stroke (in %)
+
+Data preparation
+Step 1: calculation of study proportion
+yi = ((Number of early strokes / Total study population) * 100)
+
+yi=events/(study population)?100
+
+Step 2: calculation of proportion variance
+vi = (((Study proportion in fractions * (1- Study proportion in fractions))/ Total study population)) * 100)
+vi=(proportion?(1-proportion))?100
+
+Step 3: defining annual case volume
+xi = (Total study population / Number of months reported for study inclusion) * 12
+
+xi=(study population)/(inclusion duration in months)  * 12
+
+Step 4: creating database for analysis 
+database title = stroke
+yi = study proportion (in %)
+vi = proportion variance (in %)
+xi = annual case volume (case/year)
+
+Analysis in R
+
+library(rms)
+library(metafor)
+
+res.rcs <- rma(yi, vi, mods = ~ rcs(xi, 3), control=list(stepadj=0.5, maxiter=1000), data=stroke)
+knots <- attr(rcs(model.matrix(res.rcs)[,2], 3), "parms")
+xs <- seq(0, 169.67, length=169.67)
+sav <- predict(res.rcs, newmods=rcspline.eval(xs, knots, inclx=TRUE))
+tmp <- regplot(res.rcs, mod=2, pred=sav, xvals=xs, las=1, pch = 21, lcol = "#B24745FF", col = "#374E55FF", digits=1, bty="l", psize=3/sqrt(stroke$vi), ylim=c(0,40), xlab="Annual case volume", ylab = "Early stroke (in %)", main="Volume-Outcome Relationship for Early Stroke", shade = "#D5D5D5")
+
+
+
+Survival analysis for Long-term Mortality based on Annual Case Volume Quartiles
+
+Data preparation
+
+data input = different datafiles containing the following variables:
+	time1 = retrieved time to event data in days
+	status = variable containing information on occurrence of event or censored status
+class_quart = classification in one of the 4 quartiles defined based on annual case volume
+
+Analysis in R
+
+library(survival)
+library(survminer)
+library(tidyverse)
+library(rstpm2)
+library(discfrail)
+
+All long-term survival Ã not adjusted
+
+fit <- survfit(Surv(time1, status) ~ quartile, data = TypeA_tte_KM)
+
+ggsurvplot(fit, data = TypeA_tte_KM, risk.table = TRUE, pval = TRUE, xlim = c(0,10), break.time.by = 365, censor = FALSE, conf.int = TRUE, palette = "jama", legend.title = "Quartiles", legend.labs = c("1", "2", "3", "4"), title = "Individualized Patient Data Kaplan Meier Meta-analysis", break.x.by = 1, xlab = "Time in years", fontsize = 4, risk.table.height = 0.35, font.main = c(15, "bold"), font.legend = c(12, "bold"))
+
+
+Non-parametric hierarchical Cox frailty models Ã without inclusion of Annual Case Volume
+
+Non-parametric hierarchical Cox frailty model for identification of number of latent clusters (based on Bayesian Information Criterion)
+testweib <- npdf_cox(Surv(time, status) ~ age + men + continent + medinc, groups = author, data = typette, K = 6, estK = TRUE, criterion = "BIC", eps_conv = 10^-4, se_method = c("louis","exact","numeric"))
+plot(testweib, type = 'km', lwd = 1.5)
+testweib
+
+Non-parametric hierarchical Cox frailty model based on 2 latent populations (selected based on Bayesian Information Criterion)
+testweib <- npdf_cox(Surv(time, status) ~ age + men + continent + medinc, groups = author, data = typette, K = 2, estK = FALSE, criterion = "BIC", eps_conv = 10^-4, se_method = c("louis","exact","numeric"))
+plot(testweib, type = 'km', lwd = 1.5)
+testweib
+testweib$belonging
+
+
+Non-parametric hierarchical Cox frailty models Ã with inclusion of Annual Case Volume
+
+testweibvol <- npdf_cox(Surv(time, status) ~ age + men + continent + medinc + quart, groups = author, data = typette, K = 2, estK = FALSE, criterion = "BIC", eps_conv = 10^-4, se_method = c("louis","exact","numeric"))
+plot(testweibvol, type = 'km', lwd = 1.5)
+testweibvol
+testweibvol$belonging
+
+Cox proportional hazard assumption for quartiles corrected for frailty
+fit <- coxph(Surv(time1, status) ~ quart + frailty(author, df=1), typette)
+fit2 <- cox.zph(fit)
+
+
+
+Publication bias for Early Mortality (in %) (primary outcome)
+
+Data preparation 
+
+data input = Ã’mortalityÃ“, containing the following variables:
+	mortal = number of events (early mortality in absolute values per study)
+	total = number of study subjects (in absolute values per study)
+	age = age in years
+
+Analysis in R
+
+library(meta)
+
+Publication bias for overall Early Mortality (in %)
+publication_bias <- metaprop(event=mortal, n=total, studlab=Study, data=mortality_PB, method = "Inverse", method.bias = "Egger")
+funnel(publication_bias)
+metabias(publication_bias, method.bias = publication_bias$method.bias)
+trimfill(publication_bias)
+funnel(trimfill(publication_bias))
+
+Publication bias for overall Early Mortality (in %) Ã Quartile 1
+publication_bias1 <- metaprop(event=mortal, n=total, studlab=Study, data=mortality_PB1, method = "Inverse", method.bias = "Egger")
+funnel(publication_bias1)
+metabias(publication_bias1, method.bias = publication_bias1$method.bias)
+trimfill1 <- trimfill(publication_bias1)
+funnel(trimfill(publication_bias1))
+
+Publication bias for overall Early Mortality (in %) Ã Quartile 2
+publication_bias2 <- metaprop(event=mortal, n=total, studlab=Study, data=mortality_PB2, method = "Inverse", method.bias = "Egger")
+funnel(publication_bias2)
+metabias(publication_bias2, method.bias = publication_bias2$method.bias)
+trimfill2 <- trimfill(publication_bias2)
+funnel(trimfill(publication_bias2))
+
+Publication bias for overall Early Mortality (in %) Ã Quartile 3
+publication_bias3 <- metaprop(event=mortal, n=total, studlab=Study, data=mortality_PB3, method = "Inverse", method.bias = "Egger")
+funnel(publication_bias3)
+metabias(publication_bias3, method.bias = publication_bias3$method.bias)
+trimfill3 <- trimfill(publication_bias3)
+funnel(trimfill(publication_bias3))
+
+Publication bias for overall Early Mortality (in %) Ã Quartile 4
+publication_bias4 <- metaprop(event=mortal, n=total, studlab=Study, data=mortality_PB4, method = "Inverse", method.bias = "Egger")
+funnel(publication_bias4)
+metabias(publication_bias4, method.bias = publication_bias4$method.bias)
+trimfill4 <- trimfill(publication_bias4)
+funnel(trimfill(publication_bias4))
+
+Restricted Cubic Spline for Volume/Outcome relationship with adjustement for publication bias based on separate Trim-and-Fill analyses
+res.rcs <- rma(yi, vi, mods = ~ rcs(xi, 3), control=list(stepadj=0.5, maxiter=1000), data=mortalityPB_fill)
+knots <- attr(rcs(model.matrix(res.rcs)[,2], 3), "parms")
+xs <- seq(0, 152.11, length=152.11)
+sav <- predict(res.rcs, newmods=rcspline.eval(xs, knots, inclx=TRUE))
+tmp <- regplot(res.rcs, mod=2, pred=sav, xvals=xs, las=1, pch = 21, lcol = "#B24745FF", col = "#374E55FF", digits=1, bty="l", psize=4/sqrt(mortalityPB_fill$vi), ylim=c(0,40), xlab="Annual case volume", ylab = "Early mortality (in %)", main="Publication Bias Adjusted Volume-Outcome Relationship for Early Mortality", shade = "#D5D5D5")
+
+
+
+
+
+1
+
+
